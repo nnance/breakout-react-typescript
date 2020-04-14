@@ -8,6 +8,8 @@ enum Actions {
   paddleRight,
   paddleStop,
   movePaddle,
+  moveBall,
+  startBall,
 }
 
 type Brick = {
@@ -49,7 +51,7 @@ type GameState = {
 };
 
 type GameReducer = (state: GameState, action: Actions) => GameState;
-type GameDispatcher = (action: Actions) => GameState;
+type GameDispatcher = (action: Actions | Actions[]) => GameState;
 
 // use a 2px gap between each brick
 const brickGap = 2;
@@ -164,6 +166,17 @@ const drawBoard = (context: CanvasRenderingContext2D, state: GameState) => {
   context.fillRect(paddle.x, paddle.y, paddle.width, paddle.height);
 };
 
+// check for collision between two objects using axis-aligned bounding box (AABB)
+// @see https://developer.mozilla.org/en-US/docs/Games/Techniques/2D_collision_detection
+function collides(obj1: Ball | Brick | Paddle, obj2: Ball | Brick | Paddle) {
+  return (
+    obj1.x < obj2.x + obj2.width &&
+    obj1.x + obj1.width > obj2.x &&
+    obj1.y < obj2.y + obj2.height &&
+    obj1.y + obj1.height > obj2.y
+  );
+}
+
 const paddleRight = (state: GameState): GameState => ({
   ...state,
   paddle: { ...state.paddle, dx: 3 },
@@ -179,10 +192,116 @@ const paddleStop = (state: GameState): GameState => ({
   paddle: { ...state.paddle, dx: 0 },
 });
 
-const movePaddle = (state: GameState): GameState => ({
-  ...state,
-  paddle: { ...state.paddle, x: state.paddle.x + state.paddle.dx },
-});
+const movePaddle = (state: GameState): GameState => {
+  const { paddle } = state;
+  // move paddle by it's velocity
+  const x = paddle.x + paddle.dx;
+
+  // prevent paddle from going through walls
+  return x < wallSize
+    ? {
+        ...state,
+        paddle: { ...paddle, x: wallSize },
+      }
+    : x + brickWidth > canvas.width - wallSize
+    ? {
+        ...state,
+        paddle: { ...paddle, x: canvas.width - wallSize - brickWidth },
+      }
+    : {
+        ...state,
+        paddle: { ...state.paddle, x },
+      };
+};
+
+const startBall = (state: GameState): GameState => {
+  const { ball } = state;
+  return ball.dx === 0 && ball.dy === 0
+    ? {
+        ...state,
+        ball: {
+          ...ball,
+          dx: ball.speed,
+          dy: ball.speed,
+        },
+      }
+    : state;
+};
+
+const moveBall = (state: GameState): GameState => {
+  const { paddle, bricks } = state;
+
+  // move ball by it's velocity
+  const ball: Ball = {
+    ...state.ball,
+    x: state.ball.x + state.ball.dx,
+    y: state.ball.y + state.ball.dy,
+  };
+
+  // prevent ball from going through walls by changing its velocity
+  // left & right walls
+  if (ball.x < wallSize) {
+    ball.x = wallSize;
+    ball.dx *= -1;
+  } else if (ball.x + ball.width > canvas.width - wallSize) {
+    ball.x = canvas.width - wallSize - ball.width;
+    ball.dx *= -1;
+  }
+  // top wall
+  if (ball.y < wallSize) {
+    ball.y = wallSize;
+    ball.dy *= -1;
+  }
+
+  // reset ball if it goes below the screen
+  if (ball.y > canvas.height) {
+    ball.x = 130;
+    ball.y = 260;
+    ball.dx = 0;
+    ball.dy = 0;
+  }
+
+  // check to see if ball collides with paddle. if they do change y velocity
+  if (collides(ball, paddle)) {
+    ball.dy *= -1;
+
+    // move ball above the paddle otherwise the collision will happen again
+    // in the next frame
+    ball.y = paddle.y - ball.height;
+  }
+
+  // check to see if ball collides with a brick. if it does, remove the brick
+  // and change the ball velocity based on the side the brick was hit on
+  for (let i = 0; i < bricks.length; i++) {
+    const brick = bricks[i];
+
+    if (collides(ball, brick)) {
+      // remove brick from the bricks array
+      bricks.splice(i, 1);
+
+      // ball is above or below the brick, change y velocity
+      // account for the balls speed since it will be inside the brick when it
+      // collides
+      if (
+        ball.y + ball.height - ball.speed <= brick.y ||
+        ball.y >= brick.y + brick.height - ball.speed
+      ) {
+        ball.dy *= -1;
+      }
+      // ball is on either side of the brick, change x velocity
+      else {
+        ball.dx *= -1;
+      }
+
+      break;
+    }
+  }
+
+  return {
+    ...state,
+    ball: { ...ball },
+  };
+};
 
 const reducer: GameReducer = (state, action) => {
   return action === Actions.paddleLeft
@@ -193,13 +312,19 @@ const reducer: GameReducer = (state, action) => {
     ? paddleStop(state)
     : action === Actions.movePaddle
     ? movePaddle(state)
+    : action === Actions.startBall
+    ? startBall(state)
+    : action === Actions.moveBall
+    ? moveBall(state)
     : state;
 };
 
 const dispatcher = (reducer: GameReducer, init: GameState): GameDispatcher => {
   let state = init;
-  return (action: Actions) => {
-    state = reducer(state, action);
+  return (action) => {
+    state = Array.isArray(action)
+      ? action.reduce((prev, cur) => reducer(prev, cur), state)
+      : reducer(state, action);
     return state;
   };
 };
@@ -210,7 +335,7 @@ const startGame = (canvas: HTMLCanvasElement) => {
 
   const loop = () => {
     requestAnimationFrame(loop);
-    const state = dispatch(Actions.movePaddle);
+    const state = dispatch([Actions.movePaddle, Actions.moveBall]);
     if (context) drawBoard(context, state);
   };
 
@@ -220,6 +345,10 @@ const startGame = (canvas: HTMLCanvasElement) => {
     if (e.which === 37) dispatch(Actions.paddleLeft);
     // right arrow key
     else if (e.which === 39) dispatch(Actions.paddleRight);
+    // space key
+    // if they ball is not moving, we can launch the ball using the space key. ball
+    // will move towards the bottom right to start
+    else if (e.which === 32) dispatch(Actions.startBall);
   });
 
   // listen to keyboard events to stop the paddle if key is released
