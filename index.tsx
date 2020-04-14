@@ -3,6 +3,13 @@ import ReactDOM from "react-dom";
 
 type ColorCode = "R" | "O" | "G" | "Y";
 
+enum Actions {
+  paddleLeft,
+  paddleRight,
+  paddleStop,
+  movePaddle,
+}
+
 type Brick = {
   x: number;
   y: number;
@@ -40,6 +47,9 @@ type GameState = {
   paddle: Paddle;
   ball: Ball;
 };
+
+type GameReducer = (state: GameState, action: Actions) => GameState;
+type GameDispatcher = (action: Actions) => GameState;
 
 // use a 2px gap between each brick
 const brickGap = 2;
@@ -154,12 +164,70 @@ const drawBoard = (context: CanvasRenderingContext2D, state: GameState) => {
   context.fillRect(paddle.x, paddle.y, paddle.width, paddle.height);
 };
 
-const startGame = (canvas: HTMLCanvasElement, state: GameState) => {
-  const context = canvas.getContext("2d");
+const paddleRight = (state: GameState): GameState => ({
+  ...state,
+  paddle: { ...state.paddle, dx: 3 },
+});
 
-  if (context) {
-    drawBoard(context, state);
-  }
+const paddleLeft = (state: GameState): GameState => ({
+  ...state,
+  paddle: { ...state.paddle, dx: -3 },
+});
+
+const paddleStop = (state: GameState): GameState => ({
+  ...state,
+  paddle: { ...state.paddle, dx: 0 },
+});
+
+const movePaddle = (state: GameState): GameState => ({
+  ...state,
+  paddle: { ...state.paddle, x: state.paddle.x + state.paddle.dx },
+});
+
+const reducer: GameReducer = (state, action) => {
+  return action === Actions.paddleLeft
+    ? paddleLeft(state)
+    : action === Actions.paddleRight
+    ? paddleRight(state)
+    : action === Actions.paddleStop
+    ? paddleStop(state)
+    : action === Actions.movePaddle
+    ? movePaddle(state)
+    : state;
+};
+
+const dispatcher = (reducer: GameReducer, init: GameState): GameDispatcher => {
+  let state = init;
+  return (action: Actions) => {
+    state = reducer(state, action);
+    return state;
+  };
+};
+
+const startGame = (canvas: HTMLCanvasElement) => {
+  const context = canvas.getContext("2d");
+  const dispatch = dispatcher(reducer, initialState);
+
+  const loop = () => {
+    requestAnimationFrame(loop);
+    const state = dispatch(Actions.movePaddle);
+    if (context) drawBoard(context, state);
+  };
+
+  // listen to keyboard events to move the paddle
+  document.addEventListener("keydown", (e) => {
+    // left arrow key
+    if (e.which === 37) dispatch(Actions.paddleLeft);
+    // right arrow key
+    else if (e.which === 39) dispatch(Actions.paddleRight);
+  });
+
+  // listen to keyboard events to stop the paddle if key is released
+  document.addEventListener("keyup", (e) => {
+    if (e.which === 37 || e.which === 39) dispatch(Actions.paddleStop);
+  });
+
+  requestAnimationFrame(loop);
 };
 
 export const App: React.FC = () => {
@@ -167,7 +235,7 @@ export const App: React.FC = () => {
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
 
   React.useEffect(() => {
-    if (canvasRef.current) startGame(canvasRef.current, initialState);
+    if (canvasRef.current) startGame(canvasRef.current);
   }, [canvasRef]);
 
   return <canvas width={width} height={height} ref={canvasRef}></canvas>;
