@@ -50,6 +50,7 @@ type Score = {
 };
 
 type GameState = {
+  gameOver: boolean;
   bricks: Bricks;
   paddle: Paddle;
   ball: Ball;
@@ -151,6 +152,7 @@ const initialState: GameState = {
     level: 1,
     ballCount: 3,
   },
+  gameOver: false,
 };
 
 const drawBoard = (context: CanvasRenderingContext2D, state: GameState) => {
@@ -175,6 +177,19 @@ const drawBoard = (context: CanvasRenderingContext2D, state: GameState) => {
   // draw paddle
   context.fillStyle = "cyan";
   context.fillRect(paddle.x, paddle.y, paddle.width, paddle.height);
+};
+
+const showGameOver = (context: CanvasRenderingContext2D) => {
+  context.fillStyle = "black";
+  context.globalAlpha = 0.75;
+  context.fillRect(0, canvas.height / 2 - 30, canvas.width, 60);
+
+  context.globalAlpha = 1;
+  context.fillStyle = "white";
+  context.font = "36px monospace";
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.fillText("GAME OVER!", canvas.width / 2, canvas.height / 2);
 };
 
 // check for collision between two objects using axis-aligned bounding box (AABB)
@@ -238,22 +253,22 @@ const startBall: GameTransducer = (state) => {
           dy: ball.speed,
         },
         score: {
-            ...score,
-            ballCount: score.ballCount - 1
-        }
+          ...score,
+          ballCount: score.ballCount - 1,
+        },
       }
     : state;
 };
 
 const getBrickValue = (brick: Brick): number => {
-    return brick.color === "Y"
-      ? 1
-      : brick.color === "G"
-      ? 3
-      : brick.color === "O"
-      ? 5
-      : 7;
-  };
+  return brick.color === "Y"
+    ? 1
+    : brick.color === "G"
+    ? 3
+    : brick.color === "O"
+    ? 5
+    : 7;
+};
 
 const checkBricks: GameTransducer = (state) => {
   // check to see if ball collides with a brick. if it does, remove the brick
@@ -334,11 +349,13 @@ const checkTopWall: GameTransducer = (state) => {
 // reset ball if it goes below the screen
 const checkOffScreen: GameTransducer = (state) => {
   const { ball } = state;
-  return ball.y > canvas.height
+  return ball.y > canvas.height && state.score.ballCount > 0
     ? {
         ...state,
         ball: { ...ball, x: 130, y: 260, dx: 0, dy: 0 },
       }
+    : ball.y > canvas.height
+    ? { ...state, gameOver: true }
     : state;
 };
 
@@ -455,7 +472,10 @@ export const GameBoard = () => {
 
   React.useEffect(() => {
     const context = canvasRef.current?.getContext("2d");
-    if (context) drawBoard(context, state);
+    if (context) {
+      if (state.gameOver) showGameOver(context);
+      else drawBoard(context, state);
+    }
   }, [canvasRef, state]);
 
   return <canvas width={width} height={height} ref={canvasRef}></canvas>;
