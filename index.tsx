@@ -43,15 +43,20 @@ type Ball = {
 
 type Bricks = Brick[];
 
+type Score = {
+  value: number;
+  level: number;
+};
+
 type GameState = {
   bricks: Bricks;
   paddle: Paddle;
   ball: Ball;
+  score: Score;
 };
 
 type GameTransducer = (state: Readonly<GameState>) => GameState;
 type GameReducer = (state: Readonly<GameState>, action: Actions) => GameState;
-type GameDispatcher = (action: Actions) => GameState;
 
 // use a 2px gap between each brick
 const brickGap = 2;
@@ -139,6 +144,10 @@ const initialState: GameState = {
     // ball velocity
     dx: 0,
     dy: 0,
+  },
+  score: {
+    value: 0,
+    level: 1,
   },
 };
 
@@ -235,7 +244,7 @@ const checkBricks: GameTransducer = (state) => {
   // and change the ball velocity based on the side the brick was hit on
 
   const didCollide = (state: GameState, brick: Brick, i: number): GameState => {
-    const { ball, bricks } = state;
+    const { ball, bricks, score } = state;
     return !collides(ball, brick)
       ? state
       : ball.y + ball.height - ball.speed <= brick.y ||
@@ -244,11 +253,13 @@ const checkBricks: GameTransducer = (state) => {
           ...state,
           ball: { ...ball, dy: ball.dy * -1 },
           bricks: [...bricks.slice(0, i), ...bricks.slice(i + 1)],
+          score: { ...score, value: score.value + 1 },
         }
       : {
           ...state,
           ball: { ...ball, dx: ball.dx * -1 },
           bricks: [...bricks.slice(0, i), ...bricks.slice(i + 1)],
+          score: { ...score, value: score.value + 1 },
         };
   };
 
@@ -388,12 +399,34 @@ const GameProvider: React.FC = ({ children }) => {
   return <GameContext.Provider value={store}>{children}</GameContext.Provider>;
 };
 
-const useGameContext = (): GameStore => React.useContext(GameContext);
+export const ScoreBoard = () => {
+  const [state] = React.useContext(GameContext);
+  return (
+    <div style={{ float: "right" }}>
+      <table>
+        <tbody>
+          <tr>
+            <td>
+              <b>Score:</b>
+            </td>
+            <td>{state.score.value}</td>
+          </tr>
+          <tr>
+            <td>
+              <b>Level:</b>
+            </td>
+            <td>{state.score.level}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  );
+};
 
 export const GameBoard = () => {
   const { width, height } = canvas;
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
-  const [state, dispatch] = useGameContext();
+  const [state, dispatch] = React.useContext(GameContext);
 
   React.useEffect(() => startGame(dispatch), [canvasRef]);
 
@@ -408,6 +441,7 @@ export const GameBoard = () => {
 export const App = () => {
   return (
     <GameProvider>
+      <ScoreBoard />
       <GameBoard />
     </GameProvider>
   );
