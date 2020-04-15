@@ -14,7 +14,7 @@ enum Actions {
 type Brick = {
   x: number;
   y: number;
-  color: string;
+  color: ColorCode;
   width: number;
   height: number;
 };
@@ -46,6 +46,7 @@ type Bricks = Brick[];
 type Score = {
   value: number;
   level: number;
+  ballCount: number;
 };
 
 type GameState = {
@@ -111,7 +112,7 @@ const getBricks = (): Bricks => {
       bricks.push({
         x: wallSize + (brickWidth + brickGap) * col,
         y: wallSize + (brickHeight + brickGap) * row,
-        color: colorMap[colorCode],
+        color: colorCode,
         width: brickWidth,
         height: brickHeight,
       });
@@ -148,6 +149,7 @@ const initialState: GameState = {
   score: {
     value: 0,
     level: 1,
+    ballCount: 3,
   },
 };
 
@@ -166,7 +168,7 @@ const drawBoard = (context: CanvasRenderingContext2D, state: GameState) => {
 
   // draw bricks
   bricks.forEach((brick) => {
-    context.fillStyle = brick.color;
+    context.fillStyle = colorMap[brick.color];
     context.fillRect(brick.x, brick.y, brick.width, brick.height);
   });
 
@@ -224,7 +226,7 @@ const movePaddle: GameTransducer = (state) => {
 };
 
 const startBall: GameTransducer = (state) => {
-  const { ball } = state;
+  const { ball, score } = state;
   // if they ball is not moving, we can launch the ball. ball
   // will move towards the bottom right to start
   return ball.dx === 0 && ball.dy === 0
@@ -235,9 +237,23 @@ const startBall: GameTransducer = (state) => {
           dx: ball.speed,
           dy: ball.speed,
         },
+        score: {
+            ...score,
+            ballCount: score.ballCount - 1
+        }
       }
     : state;
 };
+
+const getBrickValue = (brick: Brick): number => {
+    return brick.color === "Y"
+      ? 1
+      : brick.color === "G"
+      ? 3
+      : brick.color === "O"
+      ? 5
+      : 7;
+  };
 
 const checkBricks: GameTransducer = (state) => {
   // check to see if ball collides with a brick. if it does, remove the brick
@@ -245,6 +261,7 @@ const checkBricks: GameTransducer = (state) => {
 
   const didCollide = (state: GameState, brick: Brick, i: number): GameState => {
     const { ball, bricks, score } = state;
+
     return !collides(ball, brick)
       ? state
       : ball.y + ball.height - ball.speed <= brick.y ||
@@ -253,13 +270,13 @@ const checkBricks: GameTransducer = (state) => {
           ...state,
           ball: { ...ball, dy: ball.dy * -1 },
           bricks: [...bricks.slice(0, i), ...bricks.slice(i + 1)],
-          score: { ...score, value: score.value + 1 },
+          score: { ...score, value: score.value + getBrickValue(brick) },
         }
       : {
           ...state,
           ball: { ...ball, dx: ball.dx * -1 },
           bricks: [...bricks.slice(0, i), ...bricks.slice(i + 1)],
-          score: { ...score, value: score.value + 1 },
+          score: { ...score, value: score.value + getBrickValue(brick) },
         };
   };
 
@@ -416,6 +433,12 @@ export const ScoreBoard = () => {
               <b>Level:</b>
             </td>
             <td>{state.score.level}</td>
+          </tr>
+          <tr>
+            <td>
+              <b>Balls:</b>
+            </td>
+            <td>{state.score.ballCount}</td>
           </tr>
         </tbody>
       </table>
