@@ -355,22 +355,10 @@ const reducer: GameReducer = (state, action) => {
     : state;
 };
 
-const dispatcher = (reducer: GameReducer, init: GameState): GameDispatcher => {
-  let state = init;
-  return (action) => {
-    state = reducer(state, action);
-    return state;
-  };
-};
-
-const startGame = (canvas: HTMLCanvasElement) => {
-  const context = canvas.getContext("2d");
-  const dispatch = dispatcher(reducer, initialState);
-
+const startGame = (dispatch: React.Dispatch<Actions>) => {
   const loop = () => {
     requestAnimationFrame(loop);
-    const state = dispatch(Actions.gameLoop);
-    if (context) drawBoard(context, state);
+    dispatch(Actions.gameLoop);
   };
 
   // listen to keyboard events to move the paddle
@@ -391,15 +379,23 @@ const startGame = (canvas: HTMLCanvasElement) => {
   requestAnimationFrame(loop);
 };
 
-export const App: React.FC = () => {
+export const GameBoard: React.FC = () => {
   const { width, height } = canvas;
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
+  const [state, dispatch] = React.useReducer(reducer, initialState);
 
   React.useEffect(() => {
-    if (canvasRef.current) startGame(canvasRef.current);
-  }, [canvasRef]);
+    const context = canvasRef.current?.getContext("2d");
+    if (context) drawBoard(context, state);
+  }, [canvasRef, state]);
+
+  React.useEffect(() => startGame(dispatch), [canvasRef]);
 
   return <canvas width={width} height={height} ref={canvasRef}></canvas>;
+};
+
+export const App: React.FC = () => {
+    return <GameBoard />
 };
 
 ReactDOM.render(<App />, document.querySelector("#root"));
