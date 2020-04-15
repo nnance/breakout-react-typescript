@@ -50,7 +50,8 @@ type GameState = {
   ball: Ball;
 };
 
-type GameReducer = (state: GameState, action: Actions) => GameState;
+type GameTransducer = (state: Readonly<GameState>) => GameState;
+type GameReducer = (state: Readonly<GameState>, action: Actions) => GameState;
 type GameDispatcher = (action: Actions | Actions[]) => GameState;
 
 // use a 2px gap between each brick
@@ -177,22 +178,22 @@ function collides(obj1: Ball | Brick | Paddle, obj2: Ball | Brick | Paddle) {
   );
 }
 
-const paddleRight = (state: GameState): GameState => ({
+const paddleRight: GameTransducer = (state) => ({
   ...state,
   paddle: { ...state.paddle, dx: 3 },
 });
 
-const paddleLeft = (state: GameState): GameState => ({
+const paddleLeft: GameTransducer = (state) => ({
   ...state,
   paddle: { ...state.paddle, dx: -3 },
 });
 
-const paddleStop = (state: GameState): GameState => ({
+const paddleStop: GameTransducer = (state) => ({
   ...state,
   paddle: { ...state.paddle, dx: 0 },
 });
 
-const movePaddle = (state: GameState): GameState => {
+const movePaddle: GameTransducer = (state) => {
   const { paddle } = state;
   // move paddle by it's velocity
   const x = paddle.x + paddle.dx;
@@ -214,8 +215,10 @@ const movePaddle = (state: GameState): GameState => {
       };
 };
 
-const startBall = (state: GameState): GameState => {
+const startBall: GameTransducer = (state) => {
   const { ball } = state;
+  // if they ball is not moving, we can launch the ball. ball
+  // will move towards the bottom right to start
   return ball.dx === 0 && ball.dy === 0
     ? {
         ...state,
@@ -228,79 +231,112 @@ const startBall = (state: GameState): GameState => {
     : state;
 };
 
-const moveBall = (state: GameState): GameState => {
-  const { paddle, bricks } = state;
+const checkBricks: GameTransducer = (state) => {
+  // check to see if ball collides with a brick. if it does, remove the brick
+  // and change the ball velocity based on the side the brick was hit on
 
-  // move ball by it's velocity
-  const ball: Ball = {
-    ...state.ball,
-    x: state.ball.x + state.ball.dx,
-    y: state.ball.y + state.ball.dy,
+  const didCollide = (state: GameState, brick: Brick, i: number): GameState => {
+    const { ball, bricks } = state;
+    return !collides(ball, brick)
+      ? state
+      : ball.y + ball.height - ball.speed <= brick.y ||
+        ball.y >= brick.y + brick.height - ball.speed
+      ? {
+          ...state,
+          ball: { ...ball, dy: ball.dy * -1 },
+          bricks: [...bricks.slice(0, i), ...bricks.slice(i + 1)],
+        }
+      : {
+          ...state,
+          ball: { ...ball, dx: ball.dx * -1 },
+          bricks: [...bricks.slice(0, i), ...bricks.slice(i + 1)],
+        };
+  };
+
+  return state.bricks.reduce(
+    (prev, brick, i) => didCollide(prev, brick, i),
+    state
+  );
+};
+
+const moveBall: GameTransducer = (state) => {
+  const move: GameTransducer = (state) => {
+    const { ball } = state;
+    // move ball by it's velocity
+    return {
+      ...state,
+      ball: {
+        ...ball,
+        x: ball.x + ball.dx,
+        y: ball.y + ball.dy,
+      },
+    };
   };
 
   // prevent ball from going through walls by changing its velocity
   // left & right walls
-  if (ball.x < wallSize) {
-    ball.x = wallSize;
-    ball.dx *= -1;
-  } else if (ball.x + ball.width > canvas.width - wallSize) {
-    ball.x = canvas.width - wallSize - ball.width;
-    ball.dx *= -1;
-  }
+  const checkWall: GameTransducer = (state) => {
+    const { ball } = state;
+    return ball.x < wallSize
+      ? {
+          ...state,
+          ball: { ...ball, x: wallSize, dx: ball.dx * -1 },
+        }
+      : ball.x + ball.width > canvas.width - wallSize
+      ? {
+          ...state,
+          ball: {
+            ...ball,
+            x: canvas.width - wallSize - ball.width,
+            dx: ball.dx * -1,
+          },
+        }
+      : state;
+  };
+
   // top wall
-  if (ball.y < wallSize) {
-    ball.y = wallSize;
-    ball.dy *= -1;
-  }
+  const checkTopWall: GameTransducer = (state) => {
+    const { ball } = state;
+    return ball.y < wallSize
+      ? {
+          ...state,
+          ball: { ...ball, y: wallSize, dy: ball.dy * -1 },
+        }
+      : state;
+  };
 
   // reset ball if it goes below the screen
-  if (ball.y > canvas.height) {
-    ball.x = 130;
-    ball.y = 260;
-    ball.dx = 0;
-    ball.dy = 0;
-  }
+  const checkOffScreen: GameTransducer = (state) => {
+    const { ball } = state;
+    return ball.y > canvas.height
+      ? {
+          ...state,
+          ball: { ...ball, x: 130, y: 260, dx: 0, dy: 0 },
+        }
+      : state;
+  };
 
   // check to see if ball collides with paddle. if they do change y velocity
-  if (collides(ball, paddle)) {
-    ball.dy *= -1;
-
+  const checkPaddle: GameTransducer = (state) => {
+    const { ball, paddle } = state;
     // move ball above the paddle otherwise the collision will happen again
     // in the next frame
-    ball.y = paddle.y - ball.height;
-  }
-
-  // check to see if ball collides with a brick. if it does, remove the brick
-  // and change the ball velocity based on the side the brick was hit on
-  for (let i = 0; i < bricks.length; i++) {
-    const brick = bricks[i];
-
-    if (collides(ball, brick)) {
-      // remove brick from the bricks array
-      bricks.splice(i, 1);
-
-      // ball is above or below the brick, change y velocity
-      // account for the balls speed since it will be inside the brick when it
-      // collides
-      if (
-        ball.y + ball.height - ball.speed <= brick.y ||
-        ball.y >= brick.y + brick.height - ball.speed
-      ) {
-        ball.dy *= -1;
-      }
-      // ball is on either side of the brick, change x velocity
-      else {
-        ball.dx *= -1;
-      }
-
-      break;
-    }
-  }
-
-  return {
-    ...state,
-    ball: { ...ball },
+    return collides(ball, paddle)
+      ? {
+          ...state,
+          ball: { ...ball, dy: ball.dy * -1, y: paddle.y - ball.height },
+        }
+      : state;
   };
+
+  return [
+    move,
+    checkWall,
+    checkTopWall,
+    checkOffScreen,
+    checkPaddle,
+    checkBricks,
+  ].reduce((prev, cur) => cur(prev), state);
 };
 
 const reducer: GameReducer = (state, action) => {
@@ -346,8 +382,6 @@ const startGame = (canvas: HTMLCanvasElement) => {
     // right arrow key
     else if (e.which === 39) dispatch(Actions.paddleRight);
     // space key
-    // if they ball is not moving, we can launch the ball using the space key. ball
-    // will move towards the bottom right to start
     else if (e.which === 32) dispatch(Actions.startBall);
   });
 
