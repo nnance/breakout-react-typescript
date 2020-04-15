@@ -7,9 +7,8 @@ enum Actions {
   paddleLeft,
   paddleRight,
   paddleStop,
-  movePaddle,
-  moveBall,
   startBall,
+  gameLoop,
 }
 
 type Brick = {
@@ -52,7 +51,7 @@ type GameState = {
 
 type GameTransducer = (state: Readonly<GameState>) => GameState;
 type GameReducer = (state: Readonly<GameState>, action: Actions) => GameState;
-type GameDispatcher = (action: Actions | Actions[]) => GameState;
+type GameDispatcher = (action: Actions) => GameState;
 
 // use a 2px gap between each brick
 const brickGap = 2;
@@ -260,77 +259,80 @@ const checkBricks: GameTransducer = (state) => {
 };
 
 const moveBall: GameTransducer = (state) => {
-  const move: GameTransducer = (state) => {
-    const { ball } = state;
-    // move ball by it's velocity
-    return {
-      ...state,
-      ball: {
-        ...ball,
-        x: ball.x + ball.dx,
-        y: ball.y + ball.dy,
-      },
-    };
+  const { ball } = state;
+  // move ball by it's velocity
+  return {
+    ...state,
+    ball: {
+      ...ball,
+      x: ball.x + ball.dx,
+      y: ball.y + ball.dy,
+    },
   };
+};
 
-  // prevent ball from going through walls by changing its velocity
-  // left & right walls
-  const checkWall: GameTransducer = (state) => {
-    const { ball } = state;
-    return ball.x < wallSize
-      ? {
-          ...state,
-          ball: { ...ball, x: wallSize, dx: ball.dx * -1 },
-        }
-      : ball.x + ball.width > canvas.width - wallSize
-      ? {
-          ...state,
-          ball: {
-            ...ball,
-            x: canvas.width - wallSize - ball.width,
-            dx: ball.dx * -1,
-          },
-        }
-      : state;
-  };
+// prevent ball from going through walls by changing its velocity
+// left & right walls
+const checkWall: GameTransducer = (state) => {
+  const { ball } = state;
+  return ball.x < wallSize
+    ? {
+        ...state,
+        ball: { ...ball, x: wallSize, dx: ball.dx * -1 },
+      }
+    : ball.x + ball.width > canvas.width - wallSize
+    ? {
+        ...state,
+        ball: {
+          ...ball,
+          x: canvas.width - wallSize - ball.width,
+          dx: ball.dx * -1,
+        },
+      }
+    : state;
+};
 
-  // top wall
-  const checkTopWall: GameTransducer = (state) => {
-    const { ball } = state;
-    return ball.y < wallSize
-      ? {
-          ...state,
-          ball: { ...ball, y: wallSize, dy: ball.dy * -1 },
-        }
-      : state;
-  };
+// top wall
+const checkTopWall: GameTransducer = (state) => {
+  const { ball } = state;
+  return ball.y < wallSize
+    ? {
+        ...state,
+        ball: { ...ball, y: wallSize, dy: ball.dy * -1 },
+      }
+    : state;
+};
 
-  // reset ball if it goes below the screen
-  const checkOffScreen: GameTransducer = (state) => {
-    const { ball } = state;
-    return ball.y > canvas.height
-      ? {
-          ...state,
-          ball: { ...ball, x: 130, y: 260, dx: 0, dy: 0 },
-        }
-      : state;
-  };
+// reset ball if it goes below the screen
+const checkOffScreen: GameTransducer = (state) => {
+  const { ball } = state;
+  return ball.y > canvas.height
+    ? {
+        ...state,
+        ball: { ...ball, x: 130, y: 260, dx: 0, dy: 0 },
+      }
+    : state;
+};
 
-  // check to see if ball collides with paddle. if they do change y velocity
-  const checkPaddle: GameTransducer = (state) => {
-    const { ball, paddle } = state;
-    // move ball above the paddle otherwise the collision will happen again
-    // in the next frame
-    return collides(ball, paddle)
-      ? {
-          ...state,
-          ball: { ...ball, dy: ball.dy * -1, y: paddle.y - ball.height },
-        }
-      : state;
-  };
+// check to see if ball collides with paddle. if they do change y velocity
+const checkPaddle: GameTransducer = (state) => {
+  const { ball, paddle } = state;
+  // move ball above the paddle otherwise the collision will happen again
+  // in the next frame
+  return collides(ball, paddle)
+    ? {
+        ...state,
+        ball: { ...ball, dy: ball.dy * -1, y: paddle.y - ball.height },
+      }
+    : state;
+};
 
+const gameLoop: GameTransducer = (state) => {
+  // execute the following transducers in the order of the array.
+  // order matters here as we need to first move the pieces and process checks
   return [
-    move,
+    movePaddle,
+    moveBall,
     checkWall,
     checkTopWall,
     checkOffScreen,
@@ -346,21 +348,17 @@ const reducer: GameReducer = (state, action) => {
     ? paddleRight(state)
     : action === Actions.paddleStop
     ? paddleStop(state)
-    : action === Actions.movePaddle
-    ? movePaddle(state)
     : action === Actions.startBall
     ? startBall(state)
-    : action === Actions.moveBall
-    ? moveBall(state)
+    : action === Actions.gameLoop
+    ? gameLoop(state)
     : state;
 };
 
 const dispatcher = (reducer: GameReducer, init: GameState): GameDispatcher => {
   let state = init;
   return (action) => {
-    state = Array.isArray(action)
-      ? action.reduce((prev, cur) => reducer(prev, cur), state)
-      : reducer(state, action);
+    state = reducer(state, action);
     return state;
   };
 };
@@ -371,7 +369,7 @@ const startGame = (canvas: HTMLCanvasElement) => {
 
   const loop = () => {
     requestAnimationFrame(loop);
-    const state = dispatch([Actions.movePaddle, Actions.moveBall]);
+    const state = dispatch(Actions.gameLoop);
     if (context) drawBoard(context, state);
   };
 
