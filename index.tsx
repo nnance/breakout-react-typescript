@@ -379,23 +379,38 @@ const startGame = (dispatch: React.Dispatch<Actions>) => {
   requestAnimationFrame(loop);
 };
 
-export const GameBoard: React.FC = () => {
+type GameStore = [GameState, React.Dispatch<Actions>];
+const GameContext = React.createContext<GameStore>([initialState, () => null]);
+
+const GameProvider: React.FC = ({ children }) => {
+  const store = React.useReducer(reducer, initialState);
+
+  return <GameContext.Provider value={store}>{children}</GameContext.Provider>;
+};
+
+const useGameContext = (): GameStore => React.useContext(GameContext);
+
+export const GameBoard = () => {
   const { width, height } = canvas;
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
-  const [state, dispatch] = React.useReducer(reducer, initialState);
+  const [state, dispatch] = useGameContext();
+
+  React.useEffect(() => startGame(dispatch), [canvasRef]);
 
   React.useEffect(() => {
     const context = canvasRef.current?.getContext("2d");
     if (context) drawBoard(context, state);
   }, [canvasRef, state]);
 
-  React.useEffect(() => startGame(dispatch), [canvasRef]);
-
   return <canvas width={width} height={height} ref={canvasRef}></canvas>;
 };
 
-export const App: React.FC = () => {
-    return <GameBoard />
+export const App = () => {
+  return (
+    <GameProvider>
+      <GameBoard />
+    </GameProvider>
+  );
 };
 
 ReactDOM.render(<App />, document.querySelector("#root"));
