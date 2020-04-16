@@ -9,6 +9,7 @@ enum Actions {
   paddleStop,
   togglePause,
   gameLoop,
+  resetGame,
 }
 
 enum GameStatus {
@@ -400,6 +401,8 @@ const checkPaddle: GameTransducer = (state) => {
     : state;
 };
 
+const resetGame: GameTransducer = (state) => initialState;
+
 const gameLoop: GameTransducer = (state) => {
   // execute the following transducers in the order of the array.
   // order matters here as we need to first move the pieces and process checks
@@ -430,6 +433,8 @@ const reducer: GameReducer = (state, action) => {
     ? togglePause(state)
     : action === Actions.gameLoop
     ? gameLoop(state)
+    : action === Actions.resetGame
+    ? resetGame(state)
     : state;
 };
 
@@ -442,11 +447,13 @@ const startGame = (dispatch: React.Dispatch<Actions>) => {
   // listen to keyboard events to move the paddle
   document.addEventListener("keydown", (e) => {
     // left arrow key
-    if (e.which === 37) dispatch(Actions.paddleLeft);
+    if (e.key === "ArrowLeft") dispatch(Actions.paddleLeft);
     // right arrow key
-    else if (e.which === 39) dispatch(Actions.paddleRight);
+    else if (e.key === "ArrowRight") dispatch(Actions.paddleRight);
+    // R key
+    else if (e.key === "r") dispatch(Actions.resetGame);
     // space key
-    else if (e.which === 32) dispatch(Actions.togglePause);
+    else if (e.key === " ") dispatch(Actions.togglePause);
   });
 
   // listen to keyboard events to stop the paddle if key is released
@@ -515,7 +522,6 @@ export const GameBoard = () => {
 };
 
 //TODO: add cancel loop on game over and rerender
-//TODO: implement game reset
 //TODO: add bootstrap
 
 export const App = () => {
