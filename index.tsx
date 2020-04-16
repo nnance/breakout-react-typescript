@@ -109,6 +109,9 @@ const colorMap = {
   Y: "yellow",
 };
 
+const transform = (state: GameState, transducer: GameTransducer) =>
+  transducer(state);
+
 const getBricks = (): Bricks => {
   const bricks: Bricks = [];
 
@@ -200,6 +203,11 @@ const showGameOver = (context: CanvasRenderingContext2D) => {
   context.fillText("GAME OVER!", canvas.width / 2, canvas.height / 2);
 };
 
+const updateGame = (context: CanvasRenderingContext2D, state: GameState) => {
+  if (state.status == GameStatus.ended) showGameOver(context);
+  else drawBoard(context, state);
+};
+
 // check for collision between two objects using axis-aligned bounding box (AABB)
 // @see https://developer.mozilla.org/en-US/docs/Games/Techniques/2D_collision_detection
 function collides(obj1: Ball | Brick | Paddle, obj2: Ball | Brick | Paddle) {
@@ -285,7 +293,7 @@ const togglePause: GameTransducer = (state) => {
       ? [startRunning, startBall]
       : [flipPause, startBall];
 
-  return actions.reduce((prev, action) => action(prev), state);
+  return actions.reduce(transform, state);
 };
 
 const getBrickValue = (brick: Brick): number => {
@@ -401,25 +409,22 @@ const checkPaddle: GameTransducer = (state) => {
     : state;
 };
 
-const resetGame: GameTransducer = (state) => initialState;
+const resetGame: GameTransducer = () => initialState;
 
 const gameLoop: GameTransducer = (state) => {
   // execute the following transducers in the order of the array.
   // order matters here as we need to first move the pieces and process checks
-  const actions =
-    state.status === GameStatus.paused
-      ? []
-      : [
-          movePaddle,
-          moveBall,
-          checkWall,
-          checkTopWall,
-          checkOffScreen,
-          checkPaddle,
-          checkBricks,
-        ];
-
-  return actions.reduce((prev, cur) => cur(prev), state);
+  return state.status === GameStatus.paused
+    ? state
+    : [
+        movePaddle,
+        moveBall,
+        checkWall,
+        checkTopWall,
+        checkOffScreen,
+        checkPaddle,
+        checkBricks,
+      ].reduce(transform, state);
 };
 
 const reducer: GameReducer = (state, action) => {
@@ -439,11 +444,6 @@ const reducer: GameReducer = (state, action) => {
 };
 
 const startGame = (dispatch: React.Dispatch<Actions>) => {
-  const loop = () => {
-    requestAnimationFrame(loop);
-    dispatch(Actions.gameLoop);
-  };
-
   // listen to keyboard events to move the paddle
   document.addEventListener("keydown", (e) => {
     // left arrow key
@@ -460,8 +460,6 @@ const startGame = (dispatch: React.Dispatch<Actions>) => {
   document.addEventListener("keyup", (e) => {
     if (e.which === 37 || e.which === 39) dispatch(Actions.paddleStop);
   });
-
-  requestAnimationFrame(loop);
 };
 
 type GameStore = [GameState, React.Dispatch<Actions>];
@@ -503,19 +501,38 @@ export const ScoreBoard = () => {
   );
 };
 
+const useGameLoop = (canvasRef: React.RefObject<HTMLCanvasElement>) => {
+  const frameRef = React.useRef<number>(0);
+  const [state, dispatch] = React.useContext(GameContext);
+
+  React.useEffect(() => {
+    const loop = () => {
+      if (state.status === GameStatus.ended) {
+        cancelAnimationFrame(frameRef.current);
+      } else {
+        frameRef.current = requestAnimationFrame(loop);
+        dispatch(Actions.gameLoop);
+      }
+    };
+    startGame(dispatch);
+    frameRef.current = requestAnimationFrame(loop);
+
+    return () => {
+      cancelAnimationFrame(frameRef.current);
+    };
+  }, [canvasRef]);
+};
+
 export const GameBoard = () => {
   const { width, height } = canvas;
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
-  const [state, dispatch] = React.useContext(GameContext);
+  const [state] = React.useContext(GameContext);
 
-  React.useEffect(() => startGame(dispatch), [canvasRef]);
+  useGameLoop(canvasRef);
 
   React.useEffect(() => {
     const context = canvasRef.current?.getContext("2d");
-    if (context) {
-      if (state.status == GameStatus.ended) showGameOver(context);
-      else drawBoard(context, state);
-    }
+    if (context) updateGame(context, state);
   }, [canvasRef, state]);
 
   return <canvas width={width} height={height} ref={canvasRef}></canvas>;
