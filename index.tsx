@@ -7,8 +7,15 @@ enum Actions {
   paddleLeft,
   paddleRight,
   paddleStop,
-  startBall,
+  togglePause,
   gameLoop,
+}
+
+enum GameStatus {
+  initialized,
+  running,
+  paused,
+  ended,
 }
 
 type Brick = {
@@ -50,7 +57,7 @@ type Score = {
 };
 
 type GameState = {
-  gameOver: boolean;
+  status: GameStatus;
   bricks: Bricks;
   paddle: Paddle;
   ball: Ball;
@@ -152,7 +159,7 @@ const initialState: GameState = {
     level: 1,
     ballCount: 3,
   },
-  gameOver: false,
+  status: GameStatus.initialized,
 };
 
 const drawBoard = (context: CanvasRenderingContext2D, state: GameState) => {
@@ -260,6 +267,26 @@ const startBall: GameTransducer = (state) => {
     : state;
 };
 
+const startRunning: GameTransducer = (state) => ({
+  ...state,
+  status: GameStatus.running,
+});
+
+const flipPause: GameTransducer = (state) => ({
+  ...state,
+  status:
+    state.status === GameStatus.paused ? GameStatus.running : GameStatus.paused,
+});
+
+const togglePause: GameTransducer = (state) => {
+  const actions =
+    state.status === GameStatus.initialized
+      ? [startRunning, startBall]
+      : [flipPause, startBall];
+
+  return actions.reduce((prev, action) => action(prev), state);
+};
+
 const getBrickValue = (brick: Brick): number => {
   return brick.color === "Y"
     ? 1
@@ -353,9 +380,10 @@ const checkOffScreen: GameTransducer = (state) => {
     ? {
         ...state,
         ball: { ...ball, x: 130, y: 260, dx: 0, dy: 0 },
+        status: GameStatus.paused,
       }
     : ball.y > canvas.height
-    ? { ...state, gameOver: true }
+    ? { ...state, status: GameStatus.ended }
     : state;
 };
 
@@ -375,15 +403,20 @@ const checkPaddle: GameTransducer = (state) => {
 const gameLoop: GameTransducer = (state) => {
   // execute the following transducers in the order of the array.
   // order matters here as we need to first move the pieces and process checks
-  return [
-    movePaddle,
-    moveBall,
-    checkWall,
-    checkTopWall,
-    checkOffScreen,
-    checkPaddle,
-    checkBricks,
-  ].reduce((prev, cur) => cur(prev), state);
+  const actions =
+    state.status === GameStatus.paused
+      ? []
+      : [
+          movePaddle,
+          moveBall,
+          checkWall,
+          checkTopWall,
+          checkOffScreen,
+          checkPaddle,
+          checkBricks,
+        ];
+
+  return actions.reduce((prev, cur) => cur(prev), state);
 };
 
 const reducer: GameReducer = (state, action) => {
@@ -393,8 +426,8 @@ const reducer: GameReducer = (state, action) => {
     ? paddleRight(state)
     : action === Actions.paddleStop
     ? paddleStop(state)
-    : action === Actions.startBall
-    ? startBall(state)
+    : action === Actions.togglePause
+    ? togglePause(state)
     : action === Actions.gameLoop
     ? gameLoop(state)
     : state;
@@ -413,7 +446,7 @@ const startGame = (dispatch: React.Dispatch<Actions>) => {
     // right arrow key
     else if (e.which === 39) dispatch(Actions.paddleRight);
     // space key
-    else if (e.which === 32) dispatch(Actions.startBall);
+    else if (e.which === 32) dispatch(Actions.togglePause);
   });
 
   // listen to keyboard events to stop the paddle if key is released
@@ -473,13 +506,17 @@ export const GameBoard = () => {
   React.useEffect(() => {
     const context = canvasRef.current?.getContext("2d");
     if (context) {
-      if (state.gameOver) showGameOver(context);
+      if (state.status == GameStatus.ended) showGameOver(context);
       else drawBoard(context, state);
     }
   }, [canvasRef, state]);
 
   return <canvas width={width} height={height} ref={canvasRef}></canvas>;
 };
+
+//TODO: add cancel loop on game over and rerender
+//TODO: implement game reset
+//TODO: add bootstrap
 
 export const App = () => {
   return (
