@@ -109,6 +109,14 @@ const colorMap = {
   Y: "yellow",
 };
 
+/**
+ *
+ * HELPERS
+ *
+ * Utility and helper functions
+ *
+ */
+
 const transform = (state: GameState, transducer: GameTransducer) =>
   transducer(state);
 
@@ -131,6 +139,27 @@ const getBricks = (): Bricks => {
     }
   }
   return bricks;
+};
+
+// check for collision between two objects using axis-aligned bounding box (AABB)
+// @see https://developer.mozilla.org/en-US/docs/Games/Techniques/2D_collision_detection
+function collides(obj1: Ball | Brick | Paddle, obj2: Ball | Brick | Paddle) {
+  return (
+    obj1.x < obj2.x + obj2.width &&
+    obj1.x + obj1.width > obj2.x &&
+    obj1.y < obj2.y + obj2.height &&
+    obj1.y + obj1.height > obj2.y
+  );
+}
+
+const getBrickValue = (brick: Brick): number => {
+  return brick.color === "Y"
+    ? 1
+    : brick.color === "G"
+    ? 3
+    : brick.color === "O"
+    ? 5
+    : 7;
 };
 
 const initialState: GameState = {
@@ -165,6 +194,13 @@ const initialState: GameState = {
   },
   status: GameStatus.initialized,
 };
+
+/**
+ *
+ * DRAWING
+ * Functions for drawing the game board and pieces
+ *
+ */
 
 const drawBoard = (context: CanvasRenderingContext2D, state: GameState) => {
   const { bricks, paddle, ball } = state;
@@ -208,16 +244,12 @@ const updateGame = (context: CanvasRenderingContext2D, state: GameState) => {
   else drawBoard(context, state);
 };
 
-// check for collision between two objects using axis-aligned bounding box (AABB)
-// @see https://developer.mozilla.org/en-US/docs/Games/Techniques/2D_collision_detection
-function collides(obj1: Ball | Brick | Paddle, obj2: Ball | Brick | Paddle) {
-  return (
-    obj1.x < obj2.x + obj2.width &&
-    obj1.x + obj1.width > obj2.x &&
-    obj1.y < obj2.y + obj2.height &&
-    obj1.y + obj1.height > obj2.y
-  );
-}
+/**
+ *
+ * TRANSDUCERS
+ *
+ *
+ */
 
 const paddleRight: GameTransducer = (state) => ({
   ...state,
@@ -294,16 +326,6 @@ const togglePause: GameTransducer = (state) => {
       : [flipPause, startBall];
 
   return actions.reduce(transform, state);
-};
-
-const getBrickValue = (brick: Brick): number => {
-  return brick.color === "Y"
-    ? 1
-    : brick.color === "G"
-    ? 3
-    : brick.color === "O"
-    ? 5
-    : 7;
 };
 
 const checkBricks: GameTransducer = (state) => {
@@ -443,24 +465,12 @@ const reducer: GameReducer = (state, action) => {
     : state;
 };
 
-const startGame = (dispatch: React.Dispatch<Actions>) => {
-  // listen to keyboard events to move the paddle
-  document.addEventListener("keydown", (e) => {
-    // left arrow key
-    if (e.key === "ArrowLeft") dispatch(Actions.paddleLeft);
-    // right arrow key
-    else if (e.key === "ArrowRight") dispatch(Actions.paddleRight);
-    // R key
-    else if (e.key === "r") dispatch(Actions.resetGame);
-    // space key
-    else if (e.key === " ") dispatch(Actions.togglePause);
-  });
-
-  // listen to keyboard events to stop the paddle if key is released
-  document.addEventListener("keyup", (e) => {
-    if (e.which === 37 || e.which === 39) dispatch(Actions.paddleStop);
-  });
-};
+/**
+ *
+ * REACT
+ * ReactJS components for the game
+ *
+ */
 
 type GameStore = [GameState, React.Dispatch<Actions>];
 const GameContext = React.createContext<GameStore>([initialState, () => null]);
@@ -501,34 +511,50 @@ export const ScoreBoard = () => {
   );
 };
 
-const useGameLoop = (canvasRef: React.RefObject<HTMLCanvasElement>) => {
-  const frameRef = React.useRef<number>(0);
-  const [state, dispatch] = React.useContext(GameContext);
-
-  React.useEffect(() => {
-    const loop = () => {
-      if (state.status === GameStatus.ended) {
-        cancelAnimationFrame(frameRef.current);
-      } else {
-        frameRef.current = requestAnimationFrame(loop);
-        dispatch(Actions.gameLoop);
-      }
-    };
-    startGame(dispatch);
-    frameRef.current = requestAnimationFrame(loop);
-
-    return () => {
-      cancelAnimationFrame(frameRef.current);
-    };
-  }, [canvasRef]);
-};
-
 export const GameBoard = () => {
   const { width, height } = canvas;
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
-  const [state] = React.useContext(GameContext);
+  const frameRef = React.useRef<number>(0);
+  const [state, dispatch] = React.useContext(GameContext);
 
-  useGameLoop(canvasRef);
+  const loop = () => {
+    if (state.status === GameStatus.ended) {
+      cancelAnimationFrame(frameRef.current);
+    } else {
+      frameRef.current = requestAnimationFrame(loop);
+      dispatch(Actions.gameLoop);
+    }
+  };
+
+  const keydownHandler = (e: KeyboardEvent) => {
+    // left arrow key
+    if (e.key === "ArrowLeft") dispatch(Actions.paddleLeft);
+    // right arrow key
+    else if (e.key === "ArrowRight") dispatch(Actions.paddleRight);
+    // R key
+    else if (e.key === "r") dispatch(Actions.resetGame);
+    // space key
+    else if (e.key === " ") dispatch(Actions.togglePause);
+  };
+
+  const keyupHandler = (e: KeyboardEvent) => {
+    if (e.which === 37 || e.which === 39) dispatch(Actions.paddleStop);
+  };
+
+  React.useEffect(() => {
+    // listen to keyboard events to move the paddle
+    document.addEventListener("keydown", keydownHandler);
+    // listen to keyboard events to stop the paddle if key is released
+    document.addEventListener("keyup", keyupHandler);
+
+    frameRef.current = requestAnimationFrame(loop);
+
+    return () => {
+        cancelAnimationFrame(frameRef.current);
+        document.removeEventListener("keydown", keydownHandler);
+        document.removeEventListener("keyup", keyupHandler);
+    }
+  }, [canvasRef]);
 
   React.useEffect(() => {
     const context = canvasRef.current?.getContext("2d");
@@ -538,7 +564,6 @@ export const GameBoard = () => {
   return <canvas width={width} height={height} ref={canvasRef}></canvas>;
 };
 
-//TODO: add cancel loop on game over and rerender
 //TODO: add bootstrap
 
 export const App = () => {
