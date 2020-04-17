@@ -47,6 +47,12 @@ type Ball = {
   // ball velocity
   dx: number;
   dy: number;
+
+  collision: {
+    count: number;
+    orangeRow: boolean;
+    redRow: boolean;
+  };
 };
 
 type Bricks = Brick[];
@@ -162,6 +168,27 @@ const getBrickValue = (brick: Brick): number => {
     : 7;
 };
 
+const newBall = (): Ball => ({
+  x: 130,
+  y: 260,
+  width: 5,
+  height: 5,
+
+  // how fast the ball should go in either the x or y direction
+  speed: 2,
+
+  // ball velocity
+  dx: 0,
+  dy: 0,
+
+  // collision state
+  collision: {
+    count: 0,
+    redRow: false,
+    orangeRow: false,
+  },
+});
+
 const initialState: GameState = {
   bricks: getBricks(),
   paddle: {
@@ -174,19 +201,7 @@ const initialState: GameState = {
     // paddle x velocity
     dx: 0,
   },
-  ball: {
-    x: 130,
-    y: 260,
-    width: 5,
-    height: 5,
-
-    // how fast the ball should go in either the x or y direction
-    speed: 2,
-
-    // ball velocity
-    dx: 0,
-    dy: 0,
-  },
+  ball: newBall(),
   score: {
     value: 0,
     level: 1,
@@ -335,19 +350,43 @@ const checkBricks: GameTransducer = (state) => {
   const didCollide = (state: GameState, brick: Brick, i: number): GameState => {
     const { ball, bricks, score } = state;
 
+    const speedModifier = (ball: Ball): Ball => {
+      const collision =
+        brick.color === colorMap.O
+          ? { ...ball.collision, orangeRow: true }
+          : brick.color === colorMap.R
+          ? { ...ball.collision, redRow: true }
+          : { ...ball.collision, count: ++ball.collision.count };
+
+      const redModifier = collision.redRow ? 0.25 : 0;
+      const orangeModifier = collision.orangeRow ? 0.25 : 0;
+      const hitModifier =
+        collision.count < 6 ? 0 : collision.count < 14 ? 0.25 : 0.5;
+
+      const speed = 2 + redModifier + orangeModifier + hitModifier;
+
+      return {
+        ...ball,
+        collision,
+        speed,
+        dx: ball.dx < 0 ? speed * -1 : speed,
+        dy: ball.dy < 0 ? speed * -1 : speed,
+      };
+    };
+
     return !collides(ball, brick)
       ? state
       : ball.y + ball.height - ball.speed <= brick.y ||
         ball.y >= brick.y + brick.height - ball.speed
       ? {
           ...state,
-          ball: { ...ball, dy: ball.dy * -1 },
+          ball: speedModifier({ ...ball, dy: ball.dy * -1 }),
           bricks: [...bricks.slice(0, i), ...bricks.slice(i + 1)],
           score: { ...score, value: score.value + getBrickValue(brick) },
         }
       : {
           ...state,
-          ball: { ...ball, dx: ball.dx * -1 },
+          ball: speedModifier({ ...ball, dx: ball.dx * -1 }),
           bricks: [...bricks.slice(0, i), ...bricks.slice(i + 1)],
           score: { ...score, value: score.value + getBrickValue(brick) },
         };
@@ -410,7 +449,7 @@ const checkOffScreen: GameTransducer = (state) => {
   return ball.y > canvas.height && state.score.ballCount > 0
     ? {
         ...state,
-        ball: { ...ball, x: 130, y: 260, dx: 0, dy: 0 },
+        ball: newBall(),
         status: GameStatus.paused,
       }
     : ball.y > canvas.height
@@ -550,10 +589,10 @@ export const GameBoard = () => {
     frameRef.current = requestAnimationFrame(loop);
 
     return () => {
-        cancelAnimationFrame(frameRef.current);
-        document.removeEventListener("keydown", keydownHandler);
-        document.removeEventListener("keyup", keyupHandler);
-    }
+      cancelAnimationFrame(frameRef.current);
+      document.removeEventListener("keydown", keydownHandler);
+      document.removeEventListener("keyup", keyupHandler);
+    };
   }, [canvasRef]);
 
   React.useEffect(() => {
