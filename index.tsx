@@ -1,5 +1,9 @@
 import React from "react";
 import ReactDOM from "react-dom";
+import "bootstrap/dist/css/bootstrap.min.css";
+import Container from "react-bootstrap/Container";
+import Row from "react-bootstrap/Row";
+import Col from "react-bootstrap/Col";
 
 type ColorCode = "R" | "O" | "G" | "Y";
 
@@ -550,6 +554,34 @@ export const ScoreBoard = () => {
   );
 };
 
+export const Controls = () => {
+  const [state] = React.useContext(GameContext);
+  return (
+    <div>
+      <table>
+        <tbody>
+          <tr>
+            <td>
+              <b>Space bar</b>
+            </td>
+          </tr>
+          <tr>
+            <td>start / pause</td>
+          </tr>
+          <tr>
+            <td>
+              <b>R</b>
+            </td>
+          </tr>
+          <tr>
+            <td>reset</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
 export const GameBoard = () => {
   const { width, height } = canvas;
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
@@ -603,13 +635,37 @@ export const GameBoard = () => {
   return <canvas width={width} height={height} ref={canvasRef}></canvas>;
 };
 
-//TODO: add bootstrap
-
 export const App = () => {
+  React.useEffect(() => {
+    const { style } = document.body;
+    style.backgroundColor = "#282c34";
+    style.color = "white";
+  });
+
   return (
     <GameProvider>
-      <ScoreBoard />
-      <GameBoard />
+      <Container style={{ textAlign: "center" }} fluid>
+        <h3 className="m-3">Breakout</h3>
+        <Row>
+          <Col md={4}>
+            <Row>
+              <Col style={{ marginBottom: "20px" }}>
+                <ScoreBoard />
+              </Col>
+            </Row>
+          </Col>
+          <Col md={4}>
+            <GameBoard />
+          </Col>
+          <Col md={4}>
+            <Row>
+              <Col>
+                <Controls />
+              </Col>
+            </Row>
+          </Col>
+        </Row>
+      </Container>
     </GameProvider>
   );
 };
